@@ -113,7 +113,3 @@ The app uses the following Lichess APIs:
 - [ ] PGN export
 - [ ] Multiple analysis lines
 - [ ] Offline analysis capability
-
-## License
-
-MIT

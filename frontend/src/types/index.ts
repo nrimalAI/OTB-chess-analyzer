@@ -7,22 +7,16 @@ export interface BoardPosition {
   [square: string]: ChessSquare;
 }
 
-export interface LichessAnalysis {
-  fen: string;
-  depth: number;
-  evaluation: number;
-  bestMove: string;
-  pv: string[];
-  mate?: number;
-}
-
 export interface AnalysisResult {
   fen: string;
   evaluation: number | null;
   bestMove: string | null;
+  bestMoveSan?: string | null;
   continuation: string[];
   isMate: boolean;
   mateIn: number | null;
+  depth?: number;
+  winChance?: number;
 }
 
 export type RootStackParamList = {

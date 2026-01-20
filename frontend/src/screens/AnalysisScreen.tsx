@@ -19,11 +19,7 @@ import { Chess } from 'chess.js';
 import { RootStackParamList, AnalysisResult } from '../types';
 import ChessBoard from '../components/ChessBoard';
 import EvaluationBar from '../components/EvaluationBar';
-import {
-  analyzePosition,
-  getOpeningName,
-  generateLichessAnalysisUrl,
-} from '../services/lichessApi';
+import { analyzePosition, generateAnalysisUrl } from '../services/api';
 
 type AnalysisScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Analysis'>;
@@ -41,7 +37,6 @@ export default function AnalysisScreen({
   const [fenInput, setFenInput] = useState(initialFen || DEFAULT_FEN);
   const [isEditing, setIsEditing] = useState(!initialFen);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [opening, setOpening] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showImage, setShowImage] = useState(true);
@@ -59,12 +54,8 @@ export default function AnalysisScreen({
     setLoading(true);
     setError(null);
     try {
-      const [analysisResult, openingName] = await Promise.all([
-        analyzePosition(fenToAnalyze),
-        getOpeningName(fenToAnalyze),
-      ]);
+      const analysisResult = await analyzePosition(fenToAnalyze);
       setAnalysis(analysisResult);
-      setOpening(openingName);
     } catch (err) {
       setError('Failed to analyze position. Please try again.');
       console.error(err);
@@ -89,8 +80,8 @@ export default function AnalysisScreen({
     }
   }, []);
 
-  const openInLichess = () => {
-    const url = generateLichessAnalysisUrl(fen);
+  const openInAnalysis = () => {
+    const url = generateAnalysisUrl(fen);
     Linking.openURL(url);
   };
 
@@ -229,12 +220,12 @@ export default function AnalysisScreen({
 
         {analysis && !loading && (
           <View style={styles.analysisSection}>
-            {opening && (
-              <View style={styles.openingContainer}>
-                <Text style={styles.openingLabel}>Opening</Text>
-                <Text style={styles.openingName}>{opening}</Text>
-              </View>
-            )}
+            <View style={styles.engineInfo}>
+              <Text style={styles.engineLabel}>Stockfish Analysis</Text>
+              {analysis.depth && (
+                <Text style={styles.depthText}>Depth: {analysis.depth}</Text>
+              )}
+            </View>
 
             <View style={styles.evalContainer}>
               <Text style={styles.evalLabel}>Evaluation</Text>
@@ -247,11 +238,20 @@ export default function AnalysisScreen({
               </Text>
             </View>
 
+            {analysis.winChance !== undefined && (
+              <View style={styles.winChanceContainer}>
+                <Text style={styles.winChanceLabel}>Win Chance</Text>
+                <Text style={styles.winChanceValue}>
+                  {analysis.winChance.toFixed(1)}%
+                </Text>
+              </View>
+            )}
+
             {analysis.bestMove && (
               <View style={styles.bestMoveContainer}>
                 <Text style={styles.bestMoveLabel}>Best Move</Text>
                 <Text style={styles.bestMoveValue}>
-                  {formatMove(analysis.bestMove)}
+                  {analysis.bestMoveSan || formatMove(analysis.bestMove)}
                 </Text>
               </View>
             )}
@@ -262,17 +262,17 @@ export default function AnalysisScreen({
                   Principal Variation
                 </Text>
                 <Text style={styles.continuationValue}>
-                  {analysis.continuation.slice(0, 6).map(formatMove).join(' ')}
+                  {analysis.continuation.slice(0, 6).join(' ')}
                 </Text>
               </View>
             )}
 
             <TouchableOpacity
-              style={styles.lichessButton}
-              onPress={openInLichess}
+              style={styles.analysisButton}
+              onPress={openInAnalysis}
             >
-              <Text style={styles.lichessButtonText}>
-                Open in Lichess Analysis
+              <Text style={styles.analysisButtonText}>
+                Open in Lichess Board
               </Text>
             </TouchableOpacity>
           </View>
@@ -448,21 +448,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
   },
-  openingContainer: {
+  engineInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
-    paddingBottom: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  openingLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
-  },
-  openingName: {
-    fontSize: 18,
+  engineLabel: {
+    fontSize: 16,
     color: '#fff',
     fontWeight: 'bold',
+  },
+  depthText: {
+    fontSize: 12,
+    color: '#888',
   },
   evalContainer: {
     flexDirection: 'row',
@@ -478,6 +480,21 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  winChanceContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  winChanceLabel: {
+    fontSize: 14,
+    color: '#aaa',
+  },
+  winChanceValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
   },
   bestMoveContainer: {
     flexDirection: 'row',
@@ -507,14 +524,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: 'monospace',
   },
-  lichessButton: {
+  analysisButton: {
     backgroundColor: '#629924',
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
   },
-  lichessButtonText: {
+  analysisButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
