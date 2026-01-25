@@ -19,6 +19,15 @@ export interface AnalysisResult {
   winChance?: number;
 }
 
+export interface DetectionResult {
+  success: boolean;
+  fen?: string;
+  boardFen?: string;
+  isValid: boolean;
+  error?: string;
+  lichessUrl?: string;
+}
+
 export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;

@@ -1,72 +1,94 @@
 # OTB Chess Analyzer
 
-A React Native mobile application that allows users to capture over-the-board chess positions and analyze them using the Lichess API.
+A React Native mobile application that photographs over-the-board chess positions and provides Stockfish analysis.
 
 ## Features
 
 - **Camera Capture**: Take photos of chess boards directly from the app
-- **Image Gallery**: Select existing images from your device
+- **Automatic Board Detection**: ML-powered chess board recognition using chesscog
 - **Manual FEN Input**: Enter chess positions manually using FEN notation
-- **Position Analysis**: Get instant analysis from Lichess including:
+- **Stockfish Analysis**: Get instant analysis including:
   - Position evaluation (in pawns or mate-in-X)
   - Best move recommendation
   - Principal variation (suggested line of play)
-  - Opening name identification
+  - Win probability
 - **Interactive Chess Board**: Visual representation of the position with highlighted best moves
 - **Lichess Integration**: Open any position directly in Lichess for deeper analysis
+
+## Architecture
+
+```
+┌─────────────────────┐
+│   Mobile App        │
+│   (React Native)    │
+└─────────┬───────────┘
+          │ HTTP
+          ▼
+┌─────────────────────┐         ┌─────────────────────┐
+│   Main Backend      │────────▶│   Chesscog Service  │
+│   (Port 8000)       │         │   (Port 8001)       │
+└─────────┬───────────┘         └─────────────────────┘
+          │
+          ▼
+    Chess-API.com
+    (Stockfish)
+```
 
 ## Project Structure
 
 ```
 OTB-chess-analyzer/
-├── frontend/           # React Native (Expo) application
-│   ├── src/
-│   │   ├── components/ # Reusable UI components
-│   │   │   ├── ChessBoard.tsx
-│   │   │   └── EvaluationBar.tsx
-│   │   ├── screens/    # App screens
-│   │   │   ├── HomeScreen.tsx
-│   │   │   ├── CameraScreen.tsx
-│   │   │   ├── AnalysisScreen.tsx
-│   │   │   └── ManualFenScreen.tsx
-│   │   ├── services/   # API integrations
-│   │   │   └── lichessApi.ts
-│   │   └── types/      # TypeScript type definitions
-│   │       └── index.ts
-│   └── App.tsx
-└── backend/            # Python backend (future)
+├── frontend/                 # React Native mobile app
+│   └── src/
+│       ├── screens/          # App screens
+│       ├── components/       # Reusable components
+│       ├── services/         # API client
+│       └── types/            # TypeScript types
+├── backend/                  # Main API server
+│   └── main.py               # FastAPI endpoints
+├── chesscog-service/         # Board detection microservice
+│   ├── api.py                # FastAPI wrapper
+│   ├── chesscog/             # ML library
+│   └── models/               # Downloaded ML models
+├── docker-compose.yml        # Container deployment
+├── setup.sh                  # First-time setup script
+└── start-dev.sh              # Development startup script
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v20+ recommended)
-- npm or yarn
-- Expo CLI
-- iOS Simulator or Android Emulator (or physical device with Expo Go)
+- Python 3.9+
+- Node.js 18+
+- npm
 
-### Installation
+### Setup & Run
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
+```bash
+# First time setup (installs dependencies, downloads ML models)
+./setup.sh
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+# Start backend services
+./start-dev.sh
 
-3. Start the development server:
-   ```bash
-   npx expo start
-   ```
+# In another terminal, start the mobile app
+cd frontend && npx expo start
+```
 
-4. Run on your device:
-   - Press `i` for iOS Simulator
-   - Press `a` for Android Emulator
-   - Scan the QR code with Expo Go app on your physical device
+### Services
+
+| Service | URL |
+|---------|-----|
+| Main Backend | http://localhost:8000 |
+| Chesscog Detection | http://localhost:8001 |
+| API Docs | http://localhost:8000/docs |
+
+### Running on Device
+
+- Press `i` for iOS Simulator
+- Press `a` for Android Emulator
+- Scan the QR code with Expo Go app on your physical device
 
 ## Usage
 
@@ -87,29 +109,50 @@ OTB-chess-analyzer/
    - Use preset positions for common openings
    - Validate and analyze the position
 
-## Current Limitations
+## API Endpoints
 
-- **Automatic board detection is not yet implemented**: Users must manually enter the FEN notation after capturing an image. Future versions may include computer vision-based board recognition.
+### Main Backend (port 8000)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/analyze` | POST | Analyze position with Stockfish |
+| `/detect` | POST | Detect board from image |
+
+### Chesscog Service (port 8001)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/detect` | POST | Detect board (file upload) |
+| `/detect/base64` | POST | Detect board (base64 image) |
 
 ## Tech Stack
 
 - **Frontend**: React Native with Expo
-- **UI Components**: Custom components with React Native StyleSheet
-- **Navigation**: React Navigation (Native Stack)
+- **Backend**: Python FastAPI
+- **Board Detection**: chesscog (PyTorch ML model)
+- **Analysis**: Stockfish via Chess-API.com
 - **Chess Logic**: chess.js library
-- **Analysis**: Lichess Cloud Evaluation API
 
-## API Integration
+## Deployment
 
-The app uses the following Lichess APIs:
-- **Cloud Evaluation**: `https://lichess.org/api/cloud-eval` - For position analysis
-- **Opening Explorer**: `https://explorer.lichess.ovh/masters` - For opening identification
+### Docker Compose
+
+```bash
+docker-compose up --build
+```
+
+### Manual Deployment
+
+Deploy each service separately:
+- Main Backend: Any Python hosting (Heroku, Railway, etc.)
+- Chesscog Service: Requires more RAM/CPU for ML inference
 
 ## Future Enhancements
 
-- [ ] Automatic chess board detection using computer vision
-- [ ] Python backend for image processing
 - [ ] Game recording and history
 - [ ] PGN export
 - [ ] Multiple analysis lines
 - [ ] Offline analysis capability
+- [ ] Fine-tune chesscog model for better accuracy

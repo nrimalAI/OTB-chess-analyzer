@@ -19,7 +19,7 @@ import { Chess } from 'chess.js';
 import { RootStackParamList, AnalysisResult } from '../types';
 import ChessBoard from '../components/ChessBoard';
 import EvaluationBar from '../components/EvaluationBar';
-import { analyzePosition, generateAnalysisUrl } from '../services/api';
+import { analyzePosition, generateAnalysisUrl, detectBoard } from '../services/api';
 
 type AnalysisScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Analysis'>;
@@ -38,8 +38,10 @@ export default function AnalysisScreen({
   const [isEditing, setIsEditing] = useState(!initialFen);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showImage, setShowImage] = useState(true);
+  const [detectionAttempted, setDetectionAttempted] = useState(false);
 
   const validateFen = (fenString: string): boolean => {
     try {
@@ -64,6 +66,43 @@ export default function AnalysisScreen({
     }
   };
 
+  const runDetection = async () => {
+    if (!imageUri || detectionAttempted) return;
+
+    setDetecting(true);
+    setDetectionAttempted(true);
+    setError(null);
+
+    try {
+      const result = await detectBoard(imageUri, 'white');
+
+      if (result.success && result.fen) {
+        setFen(result.fen);
+        setFenInput(result.fen);
+        setIsEditing(false);
+
+        if (!result.isValid) {
+          Alert.alert(
+            'Position Detected',
+            'The detected position may not be a legal chess position. You can edit it if needed.',
+            [{ text: 'OK' }]
+          );
+        }
+
+        runAnalysis(result.fen);
+      } else {
+        setError(result.error || 'Failed to detect board. Please enter FEN manually.');
+        setIsEditing(true);
+      }
+    } catch (err) {
+      console.error('Detection error:', err);
+      setError('Board detection service unavailable. Please enter FEN manually.');
+      setIsEditing(true);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
   const applyFen = () => {
     if (!validateFen(fenInput)) {
       Alert.alert('Invalid FEN', 'Please enter a valid FEN string.');
@@ -75,7 +114,11 @@ export default function AnalysisScreen({
   };
 
   useEffect(() => {
-    if (!isEditing && fen) {
+    // If we have an image and no initial FEN, try to detect the board
+    if (imageUri && !initialFen) {
+      runDetection();
+    } else if (!isEditing && fen) {
+      // If we have a FEN already, just run analysis
       runAnalysis(fen);
     }
   }, []);
@@ -125,6 +168,20 @@ export default function AnalysisScreen({
             onPress={() => setShowImage(true)}
           >
             <Text style={styles.showImageText}>Show Captured Image</Text>
+          </TouchableOpacity>
+        )}
+
+        {imageUri && !detecting && (
+          <TouchableOpacity
+            style={styles.retryDetectionButton}
+            onPress={() => {
+              setDetectionAttempted(false);
+              runDetection();
+            }}
+          >
+            <Text style={styles.retryDetectionText}>
+              {detectionAttempted ? 'Retry Board Detection' : 'Detect Board'}
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -194,12 +251,22 @@ export default function AnalysisScreen({
             </View>
           )}
           <Text style={styles.fenHint}>
-            Since automatic board detection is not yet implemented, please enter
-            the FEN manually or edit the default position.
+            {detecting
+              ? 'Detecting board position from image...'
+              : detectionAttempted
+              ? 'Position detected from image. Edit if needed.'
+              : 'Enter the FEN manually or edit the detected position.'}
           </Text>
         </View>
 
-        {loading && (
+        {detecting && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#629924" />
+            <Text style={styles.loadingText}>Detecting board position...</Text>
+          </View>
+        )}
+
+        {loading && !detecting && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#629924" />
             <Text style={styles.loadingText}>Analyzing position...</Text>
@@ -238,7 +305,7 @@ export default function AnalysisScreen({
               </Text>
             </View>
 
-            {analysis.winChance !== undefined && (
+            {analysis.winChance != null && (
               <View style={styles.winChanceContainer}>
                 <Text style={styles.winChanceLabel}>Win Chance</Text>
                 <Text style={styles.winChanceValue}>
@@ -535,5 +602,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  retryDetectionButton: {
+    backgroundColor: 'rgba(98, 153, 36, 0.2)',
+    borderWidth: 1,
+    borderColor: '#629924',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  retryDetectionText: {
+    color: '#629924',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
