@@ -1,79 +1,96 @@
 # OTB Chess Analyzer
 
-A React Native mobile application that photographs over-the-board chess positions and provides Stockfish analysis.
+A React Native (Expo) iOS app that photographs over-the-board chess positions and provides Stockfish analysis.
 
 ## Features
 
-- **Camera Capture**: Take photos of chess boards directly from the app
-- **Automatic Board Detection**: ML-powered chess board recognition using chesscog
-- **Manual FEN Input**: Enter chess positions manually using FEN notation
-- **Stockfish Analysis**: Get instant analysis including:
-  - Position evaluation (in pawns or mate-in-X)
-  - Best move recommendation
+- **Camera Capture**: Take photos of chess boards or pick from gallery
+- **Automatic Board Detection**: ML-powered board recognition using chesscog (PyTorch)
+- **Manual FEN Input**: Enter or edit chess positions using FEN notation
+- **Stockfish Analysis** via Chess-API.com:
+  - Position evaluation (pawns or mate-in-X)
+  - Best move recommendation with board highlight
   - Principal variation (suggested line of play)
   - Win probability
-- **Interactive Chess Board**: Visual representation of the position with highlighted best moves
+- **Interactive Chess Board**: Visual board with highlighted best moves
 - **Lichess Integration**: Open any position directly in Lichess for deeper analysis
 
 ## Architecture
 
 ```
 ┌─────────────────────┐
-│   Mobile App        │
-│   (React Native)    │
+│   iOS App           │
+│   (React Native /   │
+│    Expo)            │
 └─────────┬───────────┘
-          │ HTTP
+          │ HTTP (base64 image / FEN)
           ▼
-┌─────────────────────┐         ┌─────────────────────┐
-│   Main Backend      │────────▶│   Chesscog Service  │
-│   (Port 8000)       │         │   (Port 8001)       │
-└─────────┬───────────┘         └─────────────────────┘
-          │
+┌─────────────────────┐         ┌──────────────────────────┐
+│   Main Backend      │────────▶│   Chesscog Service       │
+│   FastAPI :8000     │         │   FastAPI :8001           │
+│   (backend/)        │         │   (chesscog-service/)    │
+└─────────┬───────────┘         │   Hosted on Fly.io       │
+          │                     └──────────────────────────┘
           ▼
     Chess-API.com
-    (Stockfish)
+    (Stockfish engine)
 ```
 
 ## Project Structure
 
 ```
 OTB-chess-analyzer/
-├── frontend/                 # React Native mobile app
+├── frontend/                 # React Native Expo app
 │   └── src/
-│       ├── screens/          # App screens
-│       ├── components/       # Reusable components
-│       ├── services/         # API client
+│       ├── screens/
+│       │   ├── HomeScreen.tsx
+│       │   ├── CameraScreen.tsx
+│       │   ├── AnalysisScreen.tsx
+│       │   └── ManualFenScreen.tsx
+│       ├── components/       # ChessBoard, EvaluationBar
+│       ├── services/         # api.ts - HTTP client
 │       └── types/            # TypeScript types
 ├── backend/                  # Main API server
-│   └── main.py               # FastAPI endpoints
+│   ├── main.py               # FastAPI endpoints
+│   ├── requirements.txt
+│   └── Dockerfile
 ├── chesscog-service/         # Board detection microservice
-│   ├── api.py                # FastAPI wrapper
-│   ├── chesscog/             # ML library
-│   └── models/               # Downloaded ML models
-├── docker-compose.yml        # Container deployment
+│   ├── api.py                # FastAPI wrapper around chesscog
+│   ├── chesscog/             # ML library (PyTorch)
+│   ├── models/               # Downloaded ML models (git-ignored)
+│   ├── Dockerfile.api        # Production Docker image
+│   └── fly.toml              # Fly.io deployment config
+├── docker-compose.yml        # Local development orchestration
 ├── setup.sh                  # First-time setup script
 └── start-dev.sh              # Development startup script
 ```
 
-## Getting Started
+## Getting Started (Local Development)
 
 ### Prerequisites
 
 - Python 3.9+
 - Node.js 18+
 - npm
+- Docker (optional, for containerized setup)
 
-### Setup & Run
+### Option A: Script Setup
 
 ```bash
-# First time setup (installs dependencies, downloads ML models)
+# First time only — creates virtualenvs, installs deps, downloads ML models
 ./setup.sh
 
-# Start backend services
+# Start both backend services
 ./start-dev.sh
 
-# In another terminal, start the mobile app
+# In a separate terminal, start the Expo dev server
 cd frontend && npx expo start
+```
+
+### Option B: Docker Compose
+
+```bash
+docker-compose up --build
 ```
 
 ### Services
@@ -82,31 +99,33 @@ cd frontend && npx expo start
 |---------|-----|
 | Main Backend | http://localhost:8000 |
 | Chesscog Detection | http://localhost:8001 |
-| API Docs | http://localhost:8000/docs |
+| API Docs (backend) | http://localhost:8000/docs |
+| API Docs (chesscog) | http://localhost:8001/docs |
+| Expo Dev Server | http://localhost:8081 |
 
 ### Running on Device
 
-- Press `i` for iOS Simulator
-- Press `a` for Android Emulator
-- Scan the QR code with Expo Go app on your physical device
+- Press `i` — iOS Simulator
+- Press `a` — Android Emulator
+- Scan the QR code with Expo Go on a physical device
 
 ## Usage
 
-1. **Home Screen**: Choose between taking a photo or entering a FEN manually
+1. **Home Screen**: Choose between camera capture or manual FEN entry
 
-2. **Camera Mode**:
+2. **Camera Screen**:
    - Align the chess board within the guide frame
-   - Take a photo or select from gallery
-   - Review the captured image
+   - Tap the shutter button, or tap Gallery to pick an existing photo
+   - Review the captured image, then tap Analyze
 
 3. **Analysis Screen**:
-   - Enter/edit the FEN string to match the board position
-   - View the analysis results including evaluation and best move
-   - Tap "Open in Lichess Analysis" for more detailed analysis
+   - Chesscog automatically detects the board position from the photo
+   - View the FEN, edit it if the detection is off
+   - See evaluation, best move, win chance, and principal variation
+   - Tap "Open in Lichess Board" for deeper analysis
 
 4. **Manual FEN Entry**:
    - Type a FEN string directly
-   - Use preset positions for common openings
    - Validate and analyze the position
 
 ## API Endpoints
@@ -115,39 +134,72 @@ cd frontend && npx expo start
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/` | GET | Service info |
 | `/health` | GET | Health check |
-| `/analyze` | POST | Analyze position with Stockfish |
-| `/detect` | POST | Detect board from image |
+| `/detect` | POST | Proxy image detection to chesscog |
+| `/analyze` | POST | Analyze FEN with Stockfish via Chess-API.com |
+
+**Detect request body:**
+```json
+{ "image": "<base64>", "turn": "white" }
+```
+
+**Analyze request body:**
+```json
+{ "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "depth": 12 }
+```
 
 ### Chesscog Service (port 8001)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/detect` | POST | Detect board (file upload) |
-| `/detect/base64` | POST | Detect board (base64 image) |
+| `/` | GET | Service info |
+| `/health` | GET | Health check + model load status |
+| `/detect` | POST | Detect board from file upload |
+| `/detect/base64` | POST | Detect board from base64 image |
 
 ## Tech Stack
 
-- **Frontend**: React Native with Expo
-- **Backend**: Python FastAPI
-- **Board Detection**: chesscog (PyTorch ML model)
-- **Analysis**: Stockfish via Chess-API.com
-- **Chess Logic**: chess.js library
+| Layer | Technology |
+|-------|-----------|
+| Mobile | React Native 0.74, Expo 51 |
+| Navigation | React Navigation v6 |
+| Chess logic | chess.js 1.4 |
+| Backend | Python 3.9, FastAPI, uvicorn, httpx |
+| Board detection | chesscog (PyTorch ML model) |
+| Analysis engine | Stockfish via Chess-API.com |
+| Containerization | Docker, Docker Compose |
 
 ## Deployment
 
-### Docker Compose
+### Chesscog Service — Fly.io
+
+The chesscog ML service is deployed separately on Fly.io due to its memory requirements (~2GB RAM for PyTorch).
 
 ```bash
-docker-compose up --build
+cd chesscog-service
+fly launch --no-deploy   # first time only
+fly deploy
 ```
 
-### Manual Deployment
+After deploying, update the backend's `CHESSCOG_SERVICE_URL` environment variable to the Fly.io URL (e.g. `https://chesscog-service.fly.dev`).
 
-Deploy each service separately:
-- Main Backend: Any Python hosting (Heroku, Railway, etc.)
-- Chesscog Service: Requires more RAM/CPU for ML inference
+### Main Backend
+
+Deploy to any Python host (Railway, Fly.io, Render, etc.) with the following environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHESS_API_URL` | `https://chess-api.com/v1` | Stockfish API endpoint |
+| `CHESSCOG_SERVICE_URL` | `http://localhost:8001` | Chesscog service URL |
+
+```bash
+cd backend
+docker build -t otb-backend .
+docker run -p 8000:8000 \
+  -e CHESSCOG_SERVICE_URL=https://chesscog-service.fly.dev \
+  otb-backend
+```
 
 ## Future Enhancements
 
@@ -155,4 +207,5 @@ Deploy each service separately:
 - [ ] PGN export
 - [ ] Multiple analysis lines
 - [ ] Offline analysis capability
-- [ ] Fine-tune chesscog model for better accuracy
+- [ ] Fine-tune chesscog model for better OTB accuracy
+- [ ] Support for board orientation detection (white/black perspective)
